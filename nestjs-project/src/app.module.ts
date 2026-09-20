@@ -1,6 +1,8 @@
+import { BullModule } from '@nestjs/bullmq';
 import { Module } from '@nestjs/common';
 import { ConfigModule, ConfigType } from '@nestjs/config';
 import { TypeOrmModule } from '@nestjs/typeorm';
+import { bullRootOptions } from './queue/bull-root.options';
 import { AppController } from './app.controller';
 import { AppService } from './app.service';
 import { AuthModule } from './auth/auth.module';
@@ -46,6 +48,7 @@ import { VideosModule } from './videos/videos.module';
         synchronize: false,
       }),
     }),
+    BullModule.forRootAsync(bullRootOptions),
     AuthModule,
     VideosModule,
   ],

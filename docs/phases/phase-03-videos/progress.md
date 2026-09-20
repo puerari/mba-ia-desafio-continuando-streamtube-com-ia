@@ -1,7 +1,7 @@
 # phase-03-videos — Progress
 
 **Status:** in progress
-**SIs:** 6/16 completed
+**SIs:** 8/16 completed
 
 _Execution note:_ SI-03.15 was pulled forward, out of the linearized order in the plan. Its only dependency is SI-03.5 (the videos migration must exist), and once that migration landed the migrations spec went red — the `implement` rule is to move on only with the SI's suite green, so it was fixed immediately instead of at the end.
 
@@ -31,14 +31,14 @@ _Execution note:_ SI-03.15 was pulled forward, out of the linearized order in th
 - **Observations:** Adding `@OneToMany(() => Video)` to `Channel` broke every spec that builds a DataSource containing `Channel` without `Video` — TypeORM fails with "Entity metadata for Channel#videos was not found". `Video` had to be registered in all 10 `ALL_ENTITIES` arrays. That constant is duplicated across 10 spec files; centralizing it in `src/test/create-test-data-source.ts` would be the right cleanup but belongs to its own task, not to a feature phase (`CLAUDE.md` § Scope Limits). `cleanAllTables` also needed `DELETE FROM "videos"` first, since videos reference channels. Postgres returns `bigint`/`numeric` as strings, so `size_bytes` and `duration_seconds` carry a transformer — a spec asserts `typeof === 'number'` for a 10GiB value rather than trusting it. The new required env vars (`STORAGE_ACCESS_KEY`/`STORAGE_SECRET_KEY`) broke `env.validation.integration-spec.ts`, which was extended to cover them plus the storage/queue/video defaults.
 
 ### SI-03.6 — Upload Initiation: Draft Pre-registration and Presigned Multipart
-- **Status:** pending
-- **Tests:** —
-- **Observations:** —
+- **Status:** completed
+- **Tests:** 40/40 across the videos module (videos.service.spec: 13 unit, videos.service.integration-spec: 5 integration against real DB + MinIO, videos.module.spec: 1 module) and 8/8 e2e
+- **Observations:** The unique-violation guard that `ChannelsService` had inlined with an `as any` was extracted to `src/common/database/pg-error.util.ts` with a typed driver-error shape, so the videos slug retry reuses it instead of duplicating the cast (SI-03.14 then switches channels over to it). The `videos.module.spec` needs `ConfigModule.forRoot({ load: [videoConfig, storageConfig] })` — without it DI fails on the config tokens, which a compile-only module test would not have caught.
 
 ### SI-03.7 — Upload Completion and Processing Job Enqueue
-- **Status:** pending
-- **Tests:** —
-- **Observations:** —
+- **Status:** completed
+- **Tests:** 44/44 across the videos module (videos.service.spec: +8 unit, videos.service.integration-spec: +4 integration against real DB + MinIO + Redis) and 16/16 e2e
+- **Observations:** Two dependency problems, both invisible from `peerDependencies` alone. (1) `@nestjs/bullmq@12` is published as `"type": "module"` and its `exports.require` still resolves to the ESM bundle; ts-jest compiles specs to CommonJS, so every suite importing the queue died with `SyntaxError: Unexpected token 'export'`. Downgraded to `@nestjs/bullmq@11.0.5`, which is CommonJS and whose peer range already covers `@nestjs/core ^11` and `bullmq ^6` — nothing lost. (2) `bullmq@6` demoted `ioredis` to an **optional** peer, so `new Queue(...)` threw `BullMQ could not load the optional 'ioredis' package` until it was installed explicitly. `library-refs.md` was corrected on both counts. Test isolation: the `video-worker` container shares the same Redis, so both the integration and e2e suites `queue.pause()` in `beforeAll` — otherwise the live worker consumes the enqueued jobs and flips rows underneath the assertions. The root BullMQ configuration lives in `src/queue/bull-root.options.ts` so the API and the worker can never drift on connection or retry policy. Adding a second database-touching e2e suite also exposed a latent bug: `nestjs-project/CLAUDE.md` states e2e runs with `--runInBand` and that it is "already configured", but `test:e2e` is plain `jest --config ./test/jest-e2e.json` and the config set no worker limit. With only `auth.e2e-spec.ts` touching the database the parallelism was harmless; with `videos.e2e-spec.ts` alongside it, the two suites truncated each other's tables mid-flow and 13 tests failed with spurious 401s. Fixed by setting `maxWorkers: 1` in `test/jest-e2e.json`, which makes the config match what the documentation already promised.
 
 ### SI-03.8 — Media Module: FFmpeg Metadata and Thumbnail Adapter
 - **Status:** pending

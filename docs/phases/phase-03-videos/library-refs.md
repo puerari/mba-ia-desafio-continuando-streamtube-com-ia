@@ -1,13 +1,17 @@
 ---
 libs:
   "@nestjs/bullmq":
-    version: "^12.0.0"
+    version: "^11.0.5"
     context7_id: "/nestjs/bull"
     fetched_at: "2026-09-20T16:40:00-03:00"
   bullmq:
     version: "^6.3.8"
     context7_id: "/taskforcesh/bullmq"
     fetched_at: "2026-09-20T16:40:00-03:00"
+  ioredis:
+    version: "^6.0.0"
+    context7_id: "/taskforcesh/bullmq"
+    fetched_at: "2026-09-20T17:20:00-03:00"
   "@aws-sdk/client-s3":
     version: "^3.1136.0"
     context7_id: "/aws/aws-sdk-js-v3"
@@ -28,10 +32,13 @@ Compatibility was verified against the installed stack before pinning:
 
 | Package | Pinned | Why this version |
 |---------|--------|------------------|
-| `@nestjs/bullmq` | `^12.0.0` | `peerDependencies` declares `@nestjs/core: ^10 \|\| ^11 \|\| ^12` and `bullmq: ^3 \|\| ^4 \|\| ^5 \|\| ^6`. The project runs NestJS 11, so v12 is the current line that supports it. |
-| `bullmq` | `^6.3.8` | Latest major, inside `@nestjs/bullmq@12`'s peer range. `engines.node: >=14.17.0`; the container runs Node 25. |
+| `@nestjs/bullmq` | `^11.0.5` | **Not v12.** v12 is published as `"type": "module"` — its `exports.require` still points at the ESM `dist/index.js`. Node 25 can `require()` it, but ts-jest transpiles specs to CommonJS and Jest then fails with `SyntaxError: Unexpected token 'export'`, taking down every suite that touches the queue. v11.0.5 is CommonJS and its peer range already covers `@nestjs/core ^11` **and** `bullmq ^6`, so nothing is given up. |
+| `bullmq` | `^6.3.8` | Latest major, inside `@nestjs/bullmq@11.0.5`'s peer range. Dual-published (`main: ./dist/cjs/index.js`), so it loads cleanly under CommonJS. `engines.node: >=14.17.0`; the container runs Node 25. |
+| `ioredis` | `^6.0.0` | **Required explicitly.** `bullmq@6` demoted `ioredis` to an optional peer: without it every queue construction throws `BullMQ could not load the optional 'ioredis' package`. It is not pulled in transitively. |
 | `@aws-sdk/client-s3` | `^3.1136.0` | Current v3 line. Modular, first-class TypeScript types, works against MinIO via `endpoint` + `forcePathStyle`. |
 | `@aws-sdk/s3-request-presigner` | `^3.1136.0` | Must track the `client-s3` version — the presigner reads the client's resolved config. |
+
+> **Lesson recorded during implementation:** peer-dependency ranges are not enough to pick a version in this project. `nestjs-project` compiles to CommonJS (`tsconfig.json` → `module: nodenext`, emitted as CJS) and Jest transpiles specs the same way, so every dependency must also be **CommonJS-loadable**. Check `"type"` and `main`/`exports` in the candidate's `package.json`, not just `peerDependencies`. The same trap already excluded `nanoid@6` in `phase-03-videos/TD-06`.
 
 Two libraries were evaluated and **rejected**; they must not be reintroduced without superseding the TD that excluded them:
 
@@ -43,6 +50,8 @@ Two libraries were evaluated and **rejected**; they must not be reintroduced wit
 ## @nestjs/bullmq + bullmq
 
 **Source:** `/nestjs/bull` and `/taskforcesh/bullmq` (Context7) — both High reputation. Maps to `phase-03-videos/TD-01` Decision A and `phase-03-videos/TD-08`'s retry policy.
+
+`ioredis` must be an explicit dependency: `bullmq@6` loads it lazily as an optional peer and throws `BullMQ could not load the optional 'ioredis' package` at the first `new Queue(...)` if it is absent.
 
 ### Root registration
 
