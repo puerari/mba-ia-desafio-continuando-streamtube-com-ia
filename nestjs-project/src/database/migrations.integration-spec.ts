@@ -50,7 +50,9 @@ describe('Database migrations (integration)', () => {
         await dataSource.query(`DROP TABLE IF EXISTS "${table}" CASCADE`);
       }
       for (const type of MANAGED_ENUM_TYPES) {
-        await dataSource.query(`DROP TYPE IF EXISTS "public"."${type}" CASCADE`);
+        await dataSource.query(
+          `DROP TYPE IF EXISTS "public"."${type}" CASCADE`,
+        );
       }
     } catch (error) {
       // Without this the DataSource stays open on a setup failure and Jest

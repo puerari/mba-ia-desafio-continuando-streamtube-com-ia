@@ -1,10 +1,6 @@
 import { spawn } from 'node:child_process';
 import { Injectable, Logger } from '@nestjs/common';
-import type {
-  FfprobeOutput,
-  FfprobeStream,
-  VideoMetadata,
-} from './media.types';
+import type { FfprobeOutput, VideoMetadata } from './media.types';
 
 const FFPROBE_BIN = 'ffprobe';
 const FFMPEG_BIN = 'ffmpeg';

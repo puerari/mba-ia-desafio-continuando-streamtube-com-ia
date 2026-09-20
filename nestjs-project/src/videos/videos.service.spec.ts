@@ -512,9 +512,9 @@ describe('VideosService', () => {
         channels: makeChannelsService(null),
       });
 
-      await expect(
-        service.findByChannelUser('user-id'),
-      ).rejects.toBeInstanceOf(ChannelNotFoundException);
+      await expect(service.findByChannelUser('user-id')).rejects.toBeInstanceOf(
+        ChannelNotFoundException,
+      );
     });
   });
 

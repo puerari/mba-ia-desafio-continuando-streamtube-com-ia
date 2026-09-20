@@ -73,7 +73,11 @@ describe('VideoProcessingProcessor (integration)', () => {
 
     workDir = await mkdtemp(join(tmpdir(), 'processing-spec-'));
     clipPath = join(workDir, 'fixture.mp4');
-    await createFixtureClip(clipPath, { durationSeconds: 3, width: 640, height: 480 });
+    await createFixtureClip(clipPath, {
+      durationSeconds: 3,
+      width: 640,
+      height: 480,
+    });
   }, 120_000);
 
   afterAll(async () => {

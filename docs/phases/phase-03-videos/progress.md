@@ -73,9 +73,9 @@ _Execution note:_ SI-03.15 was pulled forward, out of the linearized order in th
 - **Observations:** `@Get('me')` is declared before `@Get(':slug')` because Express matches in declaration order and would otherwise read `me` as a slug; an e2e test asserts the route resolves to the listing and not to a 404 from the slug route. Kept deliberately minimal — id, slug, title, status, duration and `processing_error`. The richer management panel (thumbnails, view counts, likes, publication time) is a Fase 04 capability.
 
 ### SI-03.14 — Lint Gate Repair
-- **Status:** pending
-- **Tests:** —
-- **Observations:** —
+- **Status:** completed
+- **Tests:** no tests of its own — `npm run lint` exits 0, and the full suite (265 unit+integration, 86 e2e) plus `npx tsc --noEmit` stay green
+- **Observations:** The inherited branch reported 190 problems / 150 errors; by the time this SI ran the phase's own specs had pushed it to 425 problems / 362 errors. All of the production-code errors were fixed for real, not suppressed: `channels.service.ts` now uses the shared typed guard in `common/database/pg-error.util.ts` instead of its inline `as any`; `create-test-data-source.ts` replaces the bare `Function` with a spelled-out `EntityDefinition` union; an unused import in `ffmpeg.service.ts` and two genuine unused variables in Phase 02 specs were removed; and a `let range` in the streaming handler that was implicitly `any` got its real `ByteRange | null` type. Only then was the scoped override added, covering `**/*.spec.ts`, `**/*.integration-spec.ts` and `**/*.e2e-spec.ts` and downgrading exactly five mock-driven rules to `warn`. Result: `npm run lint` exits 0 with 0 errors and 410 warnings, all inside test files; `src/**` non-spec code keeps every `no-unsafe-*` rule at `error`, and `no-unused-vars` and `prettier/prettier` stay errors everywhere. `npx tsc --noEmit` also turned up four real type errors the suite had been tolerating at runtime — `'paused'` is not a `JobType` in bullmq 6 (a paused queue keeps its jobs in `wait`), and `fetch`'s `BodyInit` wants a `BufferSource` backed by an `ArrayBuffer` while `readFile` returns `Buffer<ArrayBufferLike>`.
 
 ### SI-03.15 — Migration Integration Spec: Hermetic Cleanup and Third Migration
 - **Status:** completed (executed early — see the execution note at the top)

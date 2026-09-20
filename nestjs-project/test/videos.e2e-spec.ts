@@ -147,7 +147,12 @@ describe('Videos (e2e)', () => {
 
     const parts: { part_number: number; etag: string }[] = [];
     for (const part of init.body.parts) {
-      const response = await fetch(part.url, { method: 'PUT', body });
+      // new Uint8Array(...) because BodyInit wants a BufferSource backed by an
+      // ArrayBuffer, and readFile hands back Buffer<ArrayBufferLike>.
+      const response = await fetch(part.url, {
+        method: 'PUT',
+        body: new Uint8Array(body),
+      });
       parts.push({
         part_number: part.part_number,
         etag: response.headers.get('etag')!,
@@ -339,7 +344,7 @@ describe('Videos (e2e)', () => {
         .set('Authorization', `Bearer ${token}`)
         .send({ parts });
 
-      const jobs = await queue.getJobs(['waiting', 'paused', 'delayed']);
+      const jobs = await queue.getJobs(['waiting', 'delayed']);
       expect(jobs).toHaveLength(1);
       expect(jobs[0].data).toEqual({ videoId });
     }, 60_000);
@@ -361,7 +366,7 @@ describe('Videos (e2e)', () => {
       expect(res.status).toBe(409);
       expect(res.body.error).toBe('INVALID_VIDEO_STATE');
 
-      const jobs = await queue.getJobs(['waiting', 'paused', 'delayed']);
+      const jobs = await queue.getJobs(['waiting', 'delayed']);
       expect(jobs).toHaveLength(1);
     }, 60_000);
 

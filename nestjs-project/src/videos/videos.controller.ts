@@ -37,12 +37,10 @@ import {
   VideoNotFoundException,
 } from './exceptions/video.exceptions';
 import { formatContentRange, parseRangeHeader } from './http-range.util';
+import type { ByteRange } from './http-range.util';
 import { CONTENT_TYPE_EXTENSIONS } from './videos.constants';
 import { VideosService } from './videos.service';
-import type {
-  CompleteUploadResult,
-  InitUploadResult,
-} from './videos.service';
+import type { CompleteUploadResult, InitUploadResult } from './videos.service';
 
 /** Keeps a title usable as a filename in a Content-Disposition header. */
 function toSafeFilename(title: string): string {
@@ -293,7 +291,7 @@ export class VideosController {
       video.storage_key,
     );
 
-    let range;
+    let range: ByteRange | null;
     try {
       range = parseRangeHeader(rangeHeader, totalLength);
     } catch (error) {
@@ -346,9 +344,7 @@ export class VideosController {
     @Res() res: Response,
   ): Promise<void> {
     const video = await this.videosService.findReadyBySlug(slug);
-    const object = await this.storageService.getObjectStream(
-      video.storage_key,
-    );
+    const object = await this.storageService.getObjectStream(video.storage_key);
 
     const extension = CONTENT_TYPE_EXTENSIONS[video.content_type] ?? '';
     const filename = `${toSafeFilename(video.title)}${extension}`;
@@ -357,10 +353,7 @@ export class VideosController {
     res.setHeader('Content-Type', object.contentType ?? video.content_type);
     res.setHeader('Content-Length', object.contentLength);
     res.setHeader('Accept-Ranges', 'bytes');
-    res.setHeader(
-      'Content-Disposition',
-      `attachment; filename="${filename}"`,
-    );
+    res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
 
     this.pipeAndCleanUp(object.stream, res);
   }

@@ -279,7 +279,7 @@ describe('VideosService (integration)', () => {
       expect(stored.contentLength).toBe(totalBytes);
       stored.stream.destroy();
 
-      const waiting = await queue.getJobs(['waiting', 'paused', 'delayed']);
+      const waiting = await queue.getJobs(['waiting', 'delayed']);
       expect(waiting).toHaveLength(1);
       expect(waiting[0].data).toEqual({ videoId });
       expect(waiting[0].name).toBe('process-video');
@@ -294,7 +294,7 @@ describe('VideosService (integration)', () => {
         videosService.completeUpload(userId, videoId, { parts }),
       ).rejects.toBeInstanceOf(InvalidVideoStateException);
 
-      const jobs = await queue.getJobs(['waiting', 'paused', 'delayed']);
+      const jobs = await queue.getJobs(['waiting', 'delayed']);
       expect(jobs).toHaveLength(1);
     }, 90_000);
 

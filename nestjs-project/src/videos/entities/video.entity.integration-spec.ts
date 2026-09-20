@@ -99,9 +99,7 @@ describe('Video entity (integration)', () => {
 
   it('round-trips a 10GiB size_bytes as a number, not a string', async () => {
     const tenGiB = 10 * 1024 * 1024 * 1024;
-    const saved = await videoRepository.save(
-      makeVideo({ size_bytes: tenGiB }),
-    );
+    const saved = await videoRepository.save(makeVideo({ size_bytes: tenGiB }));
 
     const reloaded = await videoRepository.findOneByOrFail({ id: saved.id });
     expect(typeof reloaded.size_bytes).toBe('number');

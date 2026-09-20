@@ -29,7 +29,7 @@ describe('StorageService (integration)', () => {
     for await (const chunk of stream) {
       chunks.push(Buffer.from(chunk as Uint8Array));
     }
-    return Buffer.concat(chunks) as Buffer<ArrayBuffer>;
+    return Buffer.concat(chunks);
   };
 
   beforeAll(async () => {

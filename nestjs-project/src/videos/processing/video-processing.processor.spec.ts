@@ -113,35 +113,26 @@ describe('VideoProcessingProcessor', () => {
 
       // The thumbnail file must exist for readFile to succeed, so let the
       // real extractThumbnail stand in by writing it.
-      ffmpeg.extractThumbnail.mockImplementation(async (
-        _src: string,
-        out: string,
-      ) => {
-        order.push('thumbnail');
-        
-        await writeFile(out, Buffer.from('jpeg-bytes'));
-      });
+      ffmpeg.extractThumbnail.mockImplementation(
+        async (_src: string, out: string) => {
+          order.push('thumbnail');
+
+          await writeFile(out, Buffer.from('jpeg-bytes'));
+        },
+      );
 
       await processor.process(makeJob());
 
-      expect(order).toEqual([
-        'download',
-        'probe',
-        'thumbnail',
-        'put',
-        'ready',
-      ]);
+      expect(order).toEqual(['download', 'probe', 'thumbnail', 'put', 'ready']);
     });
 
     it('seeks the thumbnail to the configured fraction of the duration', async () => {
       const { processor, ffmpeg } = build();
-      ffmpeg.extractThumbnail.mockImplementation(async (
-        _src: string,
-        out: string,
-      ) => {
-        
-        await writeFile(out, Buffer.from('jpeg'));
-      });
+      ffmpeg.extractThumbnail.mockImplementation(
+        async (_src: string, out: string) => {
+          await writeFile(out, Buffer.from('jpeg'));
+        },
+      );
 
       await processor.process(makeJob());
 
@@ -155,13 +146,11 @@ describe('VideoProcessingProcessor', () => {
 
     it('stores the thumbnail under the video thumbnail key', async () => {
       const { processor, storage, ffmpeg, videos } = build();
-      ffmpeg.extractThumbnail.mockImplementation(async (
-        _src: string,
-        out: string,
-      ) => {
-        
-        await writeFile(out, Buffer.from('jpeg'));
-      });
+      ffmpeg.extractThumbnail.mockImplementation(
+        async (_src: string, out: string) => {
+          await writeFile(out, Buffer.from('jpeg'));
+        },
+      );
 
       await processor.process(makeJob());
 
@@ -207,9 +196,7 @@ describe('VideoProcessingProcessor', () => {
         },
       });
 
-      await expect(processor.process(makeJob())).rejects.toThrow(
-        'not a video',
-      );
+      await expect(processor.process(makeJob())).rejects.toThrow('not a video');
     });
 
     it('removes its work directory even when processing throws', async () => {
@@ -233,13 +220,11 @@ describe('VideoProcessingProcessor', () => {
     it('removes its work directory on the success path', async () => {
       const before = await countWorkDirs();
       const { processor, ffmpeg } = build();
-      ffmpeg.extractThumbnail.mockImplementation(async (
-        _src: string,
-        out: string,
-      ) => {
-        
-        await writeFile(out, Buffer.from('jpeg'));
-      });
+      ffmpeg.extractThumbnail.mockImplementation(
+        async (_src: string, out: string) => {
+          await writeFile(out, Buffer.from('jpeg'));
+        },
+      );
 
       await processor.process(makeJob());
 

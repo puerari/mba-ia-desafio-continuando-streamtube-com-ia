@@ -5,8 +5,19 @@ interface TestDataSourceOptions {
   migrations?: (new () => MigrationInterface)[];
 }
 
+/**
+ * What TypeORM's `DataSourceOptions['entities']` accepts, spelled out: an
+ * entity class (a constructor), a glob path, or an EntitySchema. The bare
+ * `Function` type would also admit any callable, which is what
+ * `no-unsafe-function-type` objects to.
+ */
+type EntityDefinition =
+  | (abstract new (...args: never[]) => object)
+  | string
+  | EntitySchema<any>;
+
 export function createTestDataSource(
-  entities: (Function | string | EntitySchema<any>)[],
+  entities: EntityDefinition[],
   options: TestDataSourceOptions = {},
 ): DataSource {
   const { synchronize = true, migrations } = options;

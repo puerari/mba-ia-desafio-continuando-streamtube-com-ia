@@ -71,9 +71,7 @@ describe('FfmpegService (integration)', () => {
         child.on('close', () => resolve());
       });
 
-      await expect(service.probe(audioOnly)).rejects.toThrow(
-        /No video stream/,
-      );
+      await expect(service.probe(audioOnly)).rejects.toThrow(/No video stream/);
     }, 30_000);
   });
 

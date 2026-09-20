@@ -23,7 +23,13 @@ import { VideoProcessingModule } from './videos/processing/video-processing.modu
   imports: [
     ConfigModule.forRoot({
       isGlobal: true,
-      load: [appConfig, databaseConfig, storageConfig, queueConfig, videoConfig],
+      load: [
+        appConfig,
+        databaseConfig,
+        storageConfig,
+        queueConfig,
+        videoConfig,
+      ],
       validationSchema: envValidationSchema,
       validationOptions: { allowUnknown: true, abortEarly: false },
     }),
