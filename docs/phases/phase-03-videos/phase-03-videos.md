@@ -810,24 +810,24 @@ SI-03.14 (lint) and SI-03.15 (migration spec hermeticity) are independent of the
 
 ## Deliverables
 
-- [ ] Upload of files up to 10GB without the bytes passing through the API — presigned S3 multipart handshake (init → direct part uploads → complete)
-- [ ] Automatic draft pre-registration at upload start, with the video attached to the authenticated user's channel
-- [ ] Automatic processing after upload: duration, dimensions, codec and bitrate extracted with `ffprobe`
-- [ ] Automatic thumbnail generated from a frame at 10% of the duration and stored in object storage
-- [ ] Unique 11-character URL slug per video, guaranteed by a unique index plus collision retry
-- [ ] Streaming with HTTP `Range` → `206 Partial Content`, so playback starts without a full download
-- [ ] Download endpoint serving the stored file as an attachment
-- [ ] Video status lifecycle `draft → processing → ready | failed` persisted in the database, with the failure reason recorded only after retries are exhausted
-- [ ] Object storage (MinIO), queue (Redis) and video worker (FFmpeg) all running via `docker compose` alongside the backend
-- [ ] Migration creating the `videos` table with the status enum, the unique slug index and the FK to `channels`
-- [ ] `StorageModule`, `MediaModule` and `VideosModule` following the project's layer separation and repository conventions
-- [ ] Channel lookup added to `ChannelsService` so videos never query the channels table directly
-- [ ] Integration tests exercising the real MinIO, Redis and FFmpeg from Compose — no mocks where the real service is available
-- [ ] Migration integration spec made hermetic (enum cleanup) and extended to the third migration
-- [ ] `npm run lint` restored to a passing state without disabling rules on production code
-- [ ] `CLAUDE.md` (root and backend) updated to match the delivered code, with no `TBD` left in the architecture
-- [ ] `openapi.json` regenerated with the video endpoints
-- [ ] All SI tests pass (`docker compose exec nestjs-api npm test -- --runInBand`)
-- [ ] E2E tests pass (`docker compose exec nestjs-api npm run test:e2e`)
-- [ ] Type check passes (`docker compose exec nestjs-api npx tsc --noEmit`)
-- [ ] Lint passes (`docker compose exec nestjs-api npm run lint`)
+- [x] Upload of files up to 10GB without the bytes passing through the API — presigned S3 multipart handshake (init → direct part uploads → complete)
+- [x] Automatic draft pre-registration at upload start, with the video attached to the authenticated user's channel
+- [x] Automatic processing after upload: duration, dimensions, codec and bitrate extracted with `ffprobe`
+- [x] Automatic thumbnail generated from a frame at 10% of the duration and stored in object storage
+- [x] Unique 11-character URL slug per video, guaranteed by a unique index plus collision retry
+- [x] Streaming with HTTP `Range` → `206 Partial Content`, so playback starts without a full download
+- [x] Download endpoint serving the stored file as an attachment
+- [x] Video status lifecycle `draft → processing → ready | failed` persisted in the database, with the failure reason recorded only after retries are exhausted
+- [x] Object storage (MinIO), queue (Redis) and video worker (FFmpeg) all running via `docker compose` alongside the backend
+- [x] Migration creating the `videos` table with the status enum, the unique slug index and the FK to `channels`
+- [x] `StorageModule`, `MediaModule` and `VideosModule` following the project's layer separation and repository conventions
+- [x] Channel lookup added to `ChannelsService` so videos never query the channels table directly
+- [x] Integration tests exercising the real MinIO, Redis and FFmpeg from Compose — no mocks where the real service is available
+- [x] Migration integration spec made hermetic (enum cleanup) and extended to the third migration
+- [x] `npm run lint` restored to a passing state without disabling rules on production code
+- [x] `CLAUDE.md` (root and backend) updated to match the delivered code, with no `TBD` left in the architecture
+- [x] `openapi.json` regenerated with the video endpoints
+- [x] All SI tests pass (`docker compose exec nestjs-api npm test -- --runInBand`)
+- [x] E2E tests pass (`docker compose exec nestjs-api npm run test:e2e`)
+- [x] Type check passes (`docker compose exec nestjs-api npx tsc --noEmit`)
+- [x] Lint passes (`docker compose exec nestjs-api npm run lint`)

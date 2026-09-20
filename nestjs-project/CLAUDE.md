@@ -38,9 +38,19 @@ docker compose up -d
 # Install dependencies (first time only)
 docker compose exec nestjs-api npm install
 
+# The worker started before node_modules existed — restart it once
+docker compose restart video-worker
+
+# Apply migrations
+docker compose exec nestjs-api npm run migration:run
+
 # Run the dev server (watch mode)
 docker compose exec nestjs-api npm run start:dev
 ```
+
+On a **fresh clone** the install step and the worker compete for the same bind-mounted `node_modules`: `video-worker` starts with the stack and immediately runs `nest start --watch`, which fails (and can make `npm install` error out) until dependencies exist. Run the install first, then restart the worker. This only affects the very first run.
+
+The object storage bucket needs no manual step — `StorageService.onModuleInit` creates it if missing.
 
 Services:
 - `nestjs-api` — NestJS API, port `3000`
