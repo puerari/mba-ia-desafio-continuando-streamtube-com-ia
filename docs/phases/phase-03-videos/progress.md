@@ -1,7 +1,9 @@
 # phase-03-videos — Progress
 
 **Status:** in progress
-**SIs:** 4/16 completed
+**SIs:** 6/16 completed
+
+_Execution note:_ SI-03.15 was pulled forward, out of the linearized order in the plan. Its only dependency is SI-03.5 (the videos migration must exist), and once that migration landed the migrations spec went red — the `implement` rule is to move on only with the SI's suite green, so it was fixed immediately instead of at the end.
 
 ### SI-03.1 — Dependencies, Configuration Namespaces, and Compose Infrastructure
 - **Status:** completed
@@ -24,9 +26,9 @@
 - **Observations:** `ChannelsService` now takes `(channelRepository, dataSource)`. The constructor widening is a compile error at every existing call site, so the Phase 02 specs that did `new ChannelsService(dataSource)` were updated — `channels.service.spec.ts` (6 sites), `channels.service.integration-spec.ts` and `users.service.integration-spec.ts` (2 sites).
 
 ### SI-03.5 — Video Entity and Migration
-- **Status:** pending
-- **Tests:** —
-- **Observations:** —
+- **Status:** completed
+- **Tests:** 181/181 passing suite-wide (video.entity.integration-spec.ts: 9 integration, videos.module.spec.ts: 1 module, env.validation.integration-spec.ts: +7 integration)
+- **Observations:** Adding `@OneToMany(() => Video)` to `Channel` broke every spec that builds a DataSource containing `Channel` without `Video` — TypeORM fails with "Entity metadata for Channel#videos was not found". `Video` had to be registered in all 10 `ALL_ENTITIES` arrays. That constant is duplicated across 10 spec files; centralizing it in `src/test/create-test-data-source.ts` would be the right cleanup but belongs to its own task, not to a feature phase (`CLAUDE.md` § Scope Limits). `cleanAllTables` also needed `DELETE FROM "videos"` first, since videos reference channels. Postgres returns `bigint`/`numeric` as strings, so `size_bytes` and `duration_seconds` carry a transformer — a spec asserts `typeof === 'number'` for a 10GiB value rather than trusting it. The new required env vars (`STORAGE_ACCESS_KEY`/`STORAGE_SECRET_KEY`) broke `env.validation.integration-spec.ts`, which was extended to cover them plus the storage/queue/video defaults.
 
 ### SI-03.6 — Upload Initiation: Draft Pre-registration and Presigned Multipart
 - **Status:** pending
@@ -74,9 +76,9 @@
 - **Observations:** —
 
 ### SI-03.15 — Migration Integration Spec: Hermetic Cleanup and Third Migration
-- **Status:** pending
-- **Tests:** —
-- **Observations:** —
+- **Status:** completed (executed early — see the execution note at the top)
+- **Tests:** 2/2 passing, verified green on three consecutive runs against the same database
+- **Observations:** The inherited spec was not hermetic and had never been run twice against one database: `beforeAll` dropped the managed tables but not the enum types, which are schema objects of their own and survive `DROP TABLE ... CASCADE`. On a second run `CreateAuthTokens.up()` failed with `type "verification_tokens_type_enum" already exists`. Worse, the failure left the DataSource open, so Jest reported "did not exit one second after the test run" and hung instead of surfacing the error — which is how the problem stayed invisible. Fixed by dropping the enum types alongside the tables and by destroying the DataSource when setup throws. Table and migration lists are now derived from single constants so the next migration only needs one line.
 
 ### SI-03.16 — Documentation: CLAUDE.md Video Section and OpenAPI Export
 - **Status:** pending
