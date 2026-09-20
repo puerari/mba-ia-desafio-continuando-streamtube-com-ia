@@ -10,7 +10,7 @@ C4Container
         Container(worker, "Video Worker", "FFmpeg", "Processes videos in background")
         ContainerDb(db, "Database", "PostgreSQL", "Users, channels, videos, comments, likes")
         ContainerDb(storage, "Object Storage", "S3 or MinIO", "Video files and thumbnails")
-        ContainerQueue(queue, "Message Queue", "TBD", "Enqueues video processing jobs")
+        ContainerQueue(queue, "Message Queue", "Redis + BullMQ", "Enqueues video processing jobs")
     }
 
     System_Ext(email, "Email Service", "Account confirmation and password recovery")
@@ -18,10 +18,10 @@ C4Container
     Rel(anonUser, frontend, "Uses", "HTTPS")
     Rel(authUser, frontend, "Uses", "HTTPS")
     Rel(frontend, api, "Calls", "REST")
-    Rel(frontend, storage, "Streams", "HTTPS")
+    Rel(frontend, storage, "Uploads parts (presigned)", "HTTPS")
 
     Rel(api, db, "Reads/Writes")
-    Rel(api, storage, "Uploads")
+    Rel(api, storage, "Presigns, reads and streams")
     Rel(api, queue, "Publishes job")
     Rel(api, email, "Sends email", "SMTP")
 

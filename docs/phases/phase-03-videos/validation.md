@@ -1,55 +1,60 @@
 ---
 kind: phase
 name: phase-03-videos
-status: dirty
-issue_count: 5
+status: clean
+issue_count: 0
 sources_mtime:
-  docs/phases/phase-03-videos/context.md: "2026-09-20T16:33:16-03:00"
-  docs/decisions/technical-decisions-phase-03-videos.md: "2026-09-20T16:30:54-03:00"
+  docs/phases/phase-03-videos/context.md: "2026-09-20T16:39:48-03:00"
+  docs/decisions/technical-decisions-phase-03-videos.md: "2026-09-20T16:38:32-03:00"
 issues:
   - id: IC-1
-    status: open
+    status: resolved
     summary: "TD-07 routes streaming through the API; arch diagram has frontend streaming from storage"
+    resolved_by: docs/diagrams/software-arch.mermaid
   - id: IC-2
-    status: open
+    status: resolved
     summary: "TD-01 decided the queue but arch diagram and root CLAUDE.md still declare it TBD"
+    resolved_by: docs/diagrams/software-arch.mermaid
   - id: AMB-1
-    status: open
+    status: resolved
     summary: "Minimum payload of the draft pre-registration is unspecified (is title required at init?)"
+    resolved_by: phase-03-videos/TD-08
   - id: AMB-2
-    status: open
+    status: resolved
     summary: "Access level of stream/download endpoints unspecified for a phase with no visibility model"
+    resolved_by: phase-03-videos/TD-07
   - id: DG-1
-    status: open
+    status: resolved
     summary: "Video needs its owning channel but ChannelsService exposes no lookup by user id"
+    resolved_by: SI-03.4
 advisories: []
 ---
 
 # phase-03-videos — Validation
 
+_Revision 2 — after `/plan-resolve`. Revision 1 closed `dirty` with 5 open issues; all five are resolved below._
+
 ## Findings
 
 ### Inconsistencies
 
-- **IC-1** — `phase-03-videos/TD-07` decides "API `Range` proxy returning 206 Partial Content", so playback bytes traverse the API. The inherited architecture artifact states the opposite: `docs/diagrams/software-arch.mermaid:21` declares `Rel(frontend, storage, "Streams", "HTTPS")` — the frontend streaming directly from object storage. Both cannot be true of the delivered system. Explicit choice: (a) update `software-arch.mermaid` so the streaming edge goes `frontend → api → storage`, recording that direct-from-storage delivery is the deferred production evolution described in TD-07; (b) reopen TD-07 and switch to Option B (presigned redirect) to match the diagram as drawn.
-- **IC-2** — `phase-03-videos/TD-01` decides BullMQ + Redis, but two inherited documents still describe the queue as undecided: `docs/diagrams/software-arch.mermaid:13` (`ContainerQueue(queue, "Message Queue", "TBD", ...)`) and `CLAUDE.md:26` (`**Message Queue** (TBD) → video processing job queue`). Leaving `TBD` in place after the decision makes the architecture documentation contradict the decisions record. Explicit choice: update both references to the decided technology as part of this phase.
+_None._
 
 ### Ambiguities
 
-- **AMB-1** — The capability "Pré-cadastro automático do vídeo como rascunho ao iniciar o upload" does not say what the pre-registration carries. Two readings produce different DTOs and different API contracts: (a) the client supplies `title` at upload init and it is persisted with the draft; (b) the draft is created from the file name alone and titling belongs to Fase 04's "Edição das informações do vídeo". `phase-03-videos/TD-08` fixes the *states* but not the *payload*. Explicit choice: decide which fields the init request requires and record them in the Data Model + API Contracts of the plan.
-- **AMB-2** — The capabilities "Reprodução via streaming (sem necessidade de download completo)" and "Download do vídeo pelo usuário" do not state who may call them. `docs/project-plan.md` § Visão Geral says anonymous users watch freely, but per-video visibility (`público`/`unlisted`) is a Fase 04 capability, so Phase 03 has no visibility column to authorize against. The endpoints must be either `@Public()` or owner-only, and the choice changes the Authorization Matrix and the E2E suite. Explicit choice: decide the Phase 03 access level for stream and download and state how Fase 04 will tighten it.
+_None._
 
 ### Missing Decisions
 
-_None._
+_None._ Each of the nine capability bullets in `## Capability Coverage` is covered by at least one decided TD, and the HTTP error response format is inherited from `phase-02-auth/TD-07`.
 
 ### Dependency Gaps
 
-- **DG-1** — Every capability of this phase attaches a video to a channel ("Os vídeos da Fase 03 pertencem a um canal"), so the API must resolve the authenticated user's channel from the JWT `sub`. The inherited convention "Each domain owns its module, entity and service; cross-domain work goes through the other module's exported service" forbids `VideosService` from querying `Repository<Channel>` directly — but `ChannelsService` currently exposes only `createChannel(userId, email)` (`nestjs-project/src/channels/channels.service.ts:24`). There is no prior-phase deliverable providing the lookup. Explicit choice: add a channel lookup by user id to `ChannelsService` as an explicit SI of this phase, rather than letting `VideosService` reach into the channels table.
+_None._
 
 ### Inherited Constraint Conflicts
 
-_None._
+_None._ The ten current-phase TDs were re-checked against `## Inherited Conventions`: the worker bootstrap (`TD-04`) keeps the `registerAs` config convention from Phase 01, the storage and queue adapters keep the "services throw domain exceptions" rule from Phase 02, and the integration-test strategy (`TD-09`) extends — rather than contradicts — the Phase 02 precedent of exercising real Compose services.
 
 ### Unresolved Open Questions
 
@@ -61,4 +66,8 @@ _None._ Phase 03 has no UI capability; `## UI Inventory` is not emitted.
 
 ## Resolved Issues
 
-_No issues resolved yet._
+- **IC-1** _(resolved_by `docs/diagrams/software-arch.mermaid`)_ — `TD-07` routes playback through the API while the diagram drew `Rel(frontend, storage, "Streams", "HTTPS")`. The diagram now reads `Rel(frontend, storage, "Uploads parts (presigned)", "HTTPS")` and `Rel(api, storage, "Presigns, reads and streams")`, which matches both decided flows: the client talks to storage directly **for upload only**, and playback bytes go through the API. The root `CLAUDE.md` § Architecture bullets were updated to the same wording.
+- **IC-2** _(resolved_by `docs/diagrams/software-arch.mermaid`)_ — the queue's `TBD` placeholder was replaced with the decided technology in both places it appeared: `ContainerQueue(queue, "Message Queue", "Redis + BullMQ", ...)` in the diagram and `**Message Queue** (Redis + BullMQ)` in the root `CLAUDE.md`.
+- **AMB-1** _(resolved_by `phase-03-videos/TD-08`)_ — a `**Revisions:**` entry on TD-08 pins the pre-registration payload: upload init requires `title` (1–200 chars) plus the client-declared `filename`, `size_bytes` and `content_type`, with no filename-derived default. Rationale recorded in the TD: Fase 04 owns title editing, so Phase 03 persists a titled draft instead of inventing a title rule that Fase 04 would undo.
+- **AMB-2** _(resolved_by `phase-03-videos/TD-07`)_ — a `**Revisions:**` entry on TD-07 pins the Phase 03 access level: the read endpoints (`GET /videos/:slug`, `/stream`, `/download`) are `@Public()` and serve only `ready` videos, while the upload handshake and the owner's listing require authentication. Fase 04's visibility column will tighten the same endpoints without changing their shape.
+- **DG-1** _(resolved_by `SI-03.4`)_ — the channel lookup missing from `ChannelsService` is planned as an explicit step of this phase rather than worked around. `SI-03.4` adds `findByUserId(userId)` to `ChannelsService` and exports it, so `VideosService` resolves the owning channel through the channels module's public API and never queries `Repository<Channel>` directly — honoring the inherited single-responsibility convention.

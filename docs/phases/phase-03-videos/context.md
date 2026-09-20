@@ -3,7 +3,7 @@ kind: phase
 name: phase-03-videos
 sources_mtime:
   docs/project-plan.md: "2026-09-20T16:13:24-03:00"
-  docs/decisions/technical-decisions-phase-03-videos.md: "2026-09-20T16:30:54-03:00"
+  docs/decisions/technical-decisions-phase-03-videos.md: "2026-09-20T16:38:32-03:00"
   docs/decisions/technical-decisions-phase-01-configuracao-base.md: "2026-09-20T16:13:24-03:00"
   docs/decisions/technical-decisions-phase-02-auth.md: "2026-09-20T16:13:24-03:00"
   docs/phases/phase-01-configuracao-base/context.md: "2026-09-20T16:13:24-03:00"

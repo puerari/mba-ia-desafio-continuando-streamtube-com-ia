@@ -235,6 +235,9 @@ _Subprojects in scope:_
 
 **Decision:** A (API `Range` proxy returning 206 Partial Content)
 
+**Revisions:**
+- 2026-09-20 — Phase 03 access level pinned: `GET /videos/:slug`, `GET /videos/:slug/stream` and `GET /videos/:slug/download` are `@Public()` and serve only videos in `ready` status; the upload handshake and the owner's listing stay authenticated. Rationale: resolves `AMB-2` from `validation.md`. `docs/project-plan.md` § Visão Geral grants anonymous playback, and Phase 03 has no visibility column to authorize against — per-video `público`/`unlisted` narrowing arrives with Fase 04's visibility capability, which will tighten these same endpoints without changing their shape.
+
 ---
 
 ## TD-08: Video Status Lifecycle and Processing Failure Policy
@@ -265,6 +268,9 @@ _Subprojects in scope:_
 **Recommendation:** **Option A (four states)** — it matches the brief exactly and each state corresponds to something the backend can actually observe, which Option C's `uploading` does not. Option B is ruled out by the explicit `pronto/erro` requirement. Failure policy: **3 attempts** with exponential backoff starting at 5s; the failure reason is persisted to `processing_error` only when attempts are exhausted (via BullMQ's `failed` event guarded on `attemptsMade >= attempts`), so a transient error never surfaces as a terminal state. The job carries only the `videoId` and the handler re-reads the row, which keeps the handler idempotent and immune to the commit-then-enqueue ordering noted in TD-01.
 
 **Decision:** A (`draft → processing → ready | failed`, 3 attempts with exponential backoff)
+
+**Revisions:**
+- 2026-09-20 — Pre-registration payload pinned: upload init requires `title` (1–200 chars) plus the client-declared `filename`, `size_bytes` and `content_type`; no filename-derived default is generated. Rationale: resolves `AMB-1` from `validation.md`. Fase 04 owns "Edição das informações do vídeo", so Phase 03 persists a titled draft rather than inventing a title-generation rule that Fase 04 would immediately have to undo.
 
 ---
 
