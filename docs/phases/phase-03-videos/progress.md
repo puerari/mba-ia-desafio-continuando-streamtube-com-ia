@@ -1,7 +1,9 @@
 # phase-03-videos — Progress
 
 **Status:** in progress
-**SIs:** 11/16 completed
+**SIs:** 14/16 completed
+
+_Live-stack verification (2026-09-20):_ the whole pipeline was exercised against the running containers, not only through the test suite — register → upload init (pre-registered as `draft`) → parts uploaded straight to MinIO through the presigned URLs → complete → the `video-worker` container picked up the job and finished in **1.0s**, writing `duration=4.000s 640x360 codec=h264 bitrate=57048` and a 44,651-byte JPEG thumbnail. Then `GET /videos/:slug` (200), `/thumbnail` (200 image/jpeg), `/stream` with `Range: bytes=0-1023` (**206**, `content-range: bytes 0-1023/28524`), `/stream` with no range (200, full 28,524 bytes), an out-of-bounds range (**416**, `content-range: bytes */28524`), `/download` (200, `attachment; filename="Smoke-Test-Clip.mp4"`, byte-identical to the source) and `/videos/me` (200).
 
 _Execution note:_ SI-03.15 was pulled forward, out of the linearized order in the plan. Its only dependency is SI-03.5 (the videos migration must exist), and once that migration landed the migrations spec went red — the `implement` rule is to move on only with the SI's suite green, so it was fixed immediately instead of at the end.
 
@@ -56,19 +58,19 @@ _Execution note:_ SI-03.15 was pulled forward, out of the linearized order in th
 - **Observations:** `@Processor`'s worker options are read at class-definition time and cannot be injected, so the `queueConfig` factory is called as a plain function — the same dual-purpose pattern `data-source.ts` uses for the TypeORM CLI (`phase-01-configuracao-base/TD-04`). That makes the `import 'dotenv/config'` at the top of `worker.main.ts` load-bearing: without it `.env` is not loaded when the decorator evaluates and the options silently fall back to defaults. The `failed` event guard has its own tests at `attemptsMade` 1, 2 and 3, because the event fires on every attempt and writing the terminal state unguarded would make the status column claim a permanent failure while BullMQ is still retrying. The integration spec calls `process()` directly instead of enqueueing, so it does not race the worker container listening on the same Redis.
 
 ### SI-03.11 — Public Video Metadata and Thumbnail Endpoints
-- **Status:** pending
-- **Tests:** —
-- **Observations:** —
+- **Status:** completed
+- **Tests:** 87/87 across the videos module (videos.service.spec: +7 unit) and 34/34 e2e
+- **Observations:** `findReadyBySlug` raises the same `VideoNotFoundException` for an unknown slug and for a video that exists but is not `ready`, and there is a parameterised test over `draft`/`processing`/`failed` asserting exactly that — a distinct error would let anyone probe for unpublished videos. `thumbnail_url` points at the API route, never at MinIO; an e2e assertion greps the serialized payload for `minio` to keep it that way.
 
 ### SI-03.12 — Streaming with HTTP Range and Download
-- **Status:** pending
-- **Tests:** —
-- **Observations:** —
+- **Status:** completed
+- **Tests:** 15 unit (http-range.util.spec.ts) + 8 e2e covering 206/200/416, byte-exact ranges and the throttle exemption
+- **Observations:** Range parsing was pulled into a pure `http-range.util.ts` rather than delegated to S3, so the endpoint's behaviour is deterministic and unit-testable: RFC 9110 lets a server ignore a `Range` it cannot parse, so malformed and multi-range headers fall back to 200 instead of erroring, while a syntactically valid but out-of-bounds range is the one case that answers 416. The `Content-Range: bytes */<total>` header for that 416 is set in the controller before the exception is thrown — headers set on the response survive into what `DomainExceptionFilter` writes. `@SkipThrottle()` on the byte-serving routes is not cosmetic: the inherited `ThrottlerGuard` is a global `APP_GUARD` at 10 req/min and a single playback issues far more range requests than that; an e2e test fires 15 consecutive range requests and expects all of them to answer 206. The storage stream is destroyed on the response's `close` event — an unconsumed S3 body holds its socket open, and a handful of abandoned seeks would exhaust the pool.
 
 ### SI-03.13 — Owner Video Listing (status observability)
-- **Status:** pending
-- **Tests:** —
-- **Observations:** —
+- **Status:** completed
+- **Tests:** 2 unit + 4 e2e
+- **Observations:** `@Get('me')` is declared before `@Get(':slug')` because Express matches in declaration order and would otherwise read `me` as a slug; an e2e test asserts the route resolves to the listing and not to a 404 from the slug route. Kept deliberately minimal — id, slug, title, status, duration and `processing_error`. The richer management panel (thumbnails, view counts, likes, publication time) is a Fase 04 capability.
 
 ### SI-03.14 — Lint Gate Repair
 - **Status:** pending

@@ -1,3 +1,6 @@
+import { mkdtemp, readFile, rm } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { getQueueToken } from '@nestjs/bullmq';
 import { INestApplication, ValidationPipe } from '@nestjs/common';
 import { Test } from '@nestjs/testing';
@@ -10,9 +13,12 @@ import { AppModule } from '../src/app.module';
 import { AuthService } from '../src/auth/auth.service';
 import { DomainExceptionFilter } from '../src/common/filters/domain-exception.filter';
 import { ValidationExceptionFilter } from '../src/common/filters/validation-exception.filter';
+import { FfmpegService } from '../src/media/ffmpeg.service';
+import { createFixtureClip } from '../src/media/test-fixtures';
 import { StorageService } from '../src/storage/storage.service';
 import { cleanAllTables } from '../src/test/create-test-data-source';
-import { Video } from '../src/videos/entities/video.entity';
+import { Video, VideoStatus } from '../src/videos/entities/video.entity';
+import { videoThumbnailKey } from '../src/videos/video-storage-keys';
 import { VIDEO_PROCESSING_QUEUE } from '../src/videos/videos.constants';
 
 describe('Videos (e2e)', () => {
@@ -22,6 +28,10 @@ describe('Videos (e2e)', () => {
   let storageService: StorageService;
   let throttlerStorage: ThrottlerStorageService;
   let queue: Queue;
+  let ffmpeg: FfmpegService;
+  let workDir: string;
+  let clipPath: string;
+  let clipBytes: Buffer;
   let counter = 0;
   const createdKeys: string[] = [];
 
@@ -62,12 +72,23 @@ describe('Videos (e2e)', () => {
     // from picking up the jobs this suite enqueues and flipping rows to
     // ready/failed underneath the assertions.
     await queue.pause();
-  }, 60_000);
+
+    ffmpeg = new FfmpegService();
+    workDir = await mkdtemp(join(tmpdir(), 'videos-e2e-'));
+    clipPath = join(workDir, 'fixture.mp4');
+    await createFixtureClip(clipPath, {
+      durationSeconds: 2,
+      width: 320,
+      height: 240,
+    });
+    clipBytes = await readFile(clipPath);
+  }, 120_000);
 
   afterAll(async () => {
     for (const key of createdKeys) {
       await storageService.deleteObject(key).catch(() => undefined);
     }
+    await rm(workDir, { recursive: true, force: true });
     await queue.obliterate({ force: true }).catch(() => undefined);
     await queue.resume().catch(() => undefined);
     await app.close();
@@ -134,6 +155,48 @@ describe('Videos (e2e)', () => {
     }
 
     return { videoId: init.body.video_id, slug: init.body.slug, parts };
+  }
+
+  /**
+   * Publishes a video the way the worker would: a real clip assembled in
+   * storage, a real JPEG thumbnail, and the row flipped to `ready`.
+   *
+   * The worker itself is covered by `video-processing.integration-spec.ts`;
+   * seeding here keeps the read-endpoint assertions deterministic instead of
+   * waiting on the container that shares this Redis.
+   */
+  async function publishVideo(token: string): Promise<{
+    videoId: string;
+    slug: string;
+    sizeBytes: number;
+  }> {
+    const { videoId, slug, parts } = await uploadFile(token, clipBytes);
+
+    await request(app.getHttpServer())
+      .post(`/videos/${videoId}/uploads/complete`)
+      .set('Authorization', `Bearer ${token}`)
+      .send({ parts });
+
+    const thumbnailPath = join(workDir, `${videoId}.jpg`);
+    await ffmpeg.extractThumbnail(clipPath, thumbnailPath, 0.2, 320);
+    const thumbnailKey = videoThumbnailKey(videoId);
+    await storageService.putObject(
+      thumbnailKey,
+      await readFile(thumbnailPath),
+      'image/jpeg',
+    );
+    createdKeys.push(thumbnailKey);
+
+    await videoRepository.update(videoId, {
+      status: VideoStatus.READY,
+      duration_seconds: 2,
+      width: 320,
+      height: 240,
+      video_codec: 'h264',
+      thumbnail_key: thumbnailKey,
+    });
+
+    return { videoId, slug, sizeBytes: clipBytes.length };
   }
 
   describe('POST /videos/uploads', () => {
@@ -359,5 +422,273 @@ describe('Videos (e2e)', () => {
 
       expect(res.status).toBe(401);
     });
+  });
+
+  describe('GET /videos/me', () => {
+    it('returns the caller videos in every status, newest first', async () => {
+      const token = await signUp();
+      const first = await uploadFile(token);
+      const second = await uploadFile(token);
+
+      const res = await request(app.getHttpServer())
+        .get('/videos/me')
+        .set('Authorization', `Bearer ${token}`);
+
+      expect(res.status).toBe(200);
+      expect(res.body).toHaveLength(2);
+      expect(res.body.map((v: { id: string }) => v.id)).toEqual([
+        second.videoId,
+        first.videoId,
+      ]);
+      expect(res.body[0]).toMatchObject({ status: 'draft' });
+      expect(res.body[0]).toHaveProperty('processing_error', null);
+    }, 90_000);
+
+    it('never leaks another channel videos', async () => {
+      const owner = await signUp();
+      await uploadFile(owner);
+      const stranger = await signUp();
+
+      const res = await request(app.getHttpServer())
+        .get('/videos/me')
+        .set('Authorization', `Bearer ${stranger}`);
+
+      expect(res.status).toBe(200);
+      expect(res.body).toHaveLength(0);
+    }, 60_000);
+
+    it('resolves to the listing route rather than the slug route', async () => {
+      const token = await signUp();
+
+      const res = await request(app.getHttpServer())
+        .get('/videos/me')
+        .set('Authorization', `Bearer ${token}`);
+
+      // The slug route would have answered 404 VIDEO_NOT_FOUND for "me".
+      expect(res.status).toBe(200);
+      expect(Array.isArray(res.body)).toBe(true);
+    });
+
+    it('returns 401 without an access token', async () => {
+      const res = await request(app.getHttpServer()).get('/videos/me');
+      expect(res.status).toBe(401);
+    });
+  });
+
+  describe('GET /videos/:slug', () => {
+    it('returns the public projection to an anonymous caller', async () => {
+      const token = await signUp();
+      const { videoId, slug } = await publishVideo(token);
+
+      const res = await request(app.getHttpServer()).get(`/videos/${slug}`);
+
+      expect(res.status).toBe(200);
+      expect(res.body).toMatchObject({
+        id: videoId,
+        slug,
+        status: 'ready',
+        width: 320,
+        height: 240,
+        thumbnail_url: `/videos/${slug}/thumbnail`,
+      });
+      expect(res.body.channel).toMatchObject({
+        nickname: expect.any(String),
+      });
+      // The bucket stays private: no storage URL is ever exposed.
+      expect(JSON.stringify(res.body)).not.toContain('minio');
+      expect(res.body).not.toHaveProperty('storage_key');
+    }, 120_000);
+
+    it('returns 404 for an unknown slug', async () => {
+      const res = await request(app.getHttpServer()).get('/videos/doesnotexi');
+
+      expect(res.status).toBe(404);
+      expect(res.body.error).toBe('VIDEO_NOT_FOUND');
+    });
+
+    it('returns 404 for a video that is not ready, hiding its existence', async () => {
+      const token = await signUp();
+      const { slug } = await uploadFile(token);
+
+      const res = await request(app.getHttpServer()).get(`/videos/${slug}`);
+
+      expect(res.status).toBe(404);
+      expect(res.body.error).toBe('VIDEO_NOT_FOUND');
+    }, 60_000);
+  });
+
+  describe('GET /videos/:slug/thumbnail', () => {
+    it('serves the generated JPEG through the API', async () => {
+      const token = await signUp();
+      const { slug } = await publishVideo(token);
+
+      const res = await request(app.getHttpServer())
+        .get(`/videos/${slug}/thumbnail`)
+        .buffer(true)
+        .parse((response, callback) => {
+          const chunks: Buffer[] = [];
+          response.on('data', (chunk: Buffer) => chunks.push(chunk));
+          response.on('end', () => callback(null, Buffer.concat(chunks)));
+        });
+
+      expect(res.status).toBe(200);
+      expect(res.headers['content-type']).toContain('image/jpeg');
+      const body = res.body as Buffer;
+      expect(body.length).toBeGreaterThan(0);
+      // JPEG SOI marker
+      expect(body[0]).toBe(0xff);
+      expect(body[1]).toBe(0xd8);
+    }, 120_000);
+
+    it('returns 404 for a video that is not ready', async () => {
+      const token = await signUp();
+      const { slug } = await uploadFile(token);
+
+      const res = await request(app.getHttpServer()).get(
+        `/videos/${slug}/thumbnail`,
+      );
+
+      expect(res.status).toBe(404);
+    }, 60_000);
+  });
+
+  describe('GET /videos/:slug/stream', () => {
+    const asBuffer = (req: request.Test) =>
+      req.buffer(true).parse((response, callback) => {
+        const chunks: Buffer[] = [];
+        response.on('data', (chunk: Buffer) => chunks.push(chunk));
+        response.on('end', () => callback(null, Buffer.concat(chunks)));
+      });
+
+    it('returns 206 with exactly the requested byte range', async () => {
+      const token = await signUp();
+      const { slug, sizeBytes } = await publishVideo(token);
+
+      const res = await asBuffer(
+        request(app.getHttpServer())
+          .get(`/videos/${slug}/stream`)
+          .set('Range', 'bytes=0-99'),
+      );
+
+      expect(res.status).toBe(206);
+      expect(res.headers['content-range']).toBe(`bytes 0-99/${sizeBytes}`);
+      expect(res.headers['content-length']).toBe('100');
+      expect(res.headers['accept-ranges']).toBe('bytes');
+      expect((res.body as Buffer).length).toBe(100);
+    }, 120_000);
+
+    it('returns the exact bytes the range asked for', async () => {
+      const token = await signUp();
+      const { slug } = await publishVideo(token);
+
+      const res = await asBuffer(
+        request(app.getHttpServer())
+          .get(`/videos/${slug}/stream`)
+          .set('Range', 'bytes=10-19'),
+      );
+
+      expect(res.status).toBe(206);
+      expect((res.body as Buffer).equals(clipBytes.subarray(10, 20))).toBe(
+        true,
+      );
+    }, 120_000);
+
+    it('returns 200 with the whole body when no Range is sent', async () => {
+      const token = await signUp();
+      const { slug, sizeBytes } = await publishVideo(token);
+
+      const res = await asBuffer(
+        request(app.getHttpServer()).get(`/videos/${slug}/stream`),
+      );
+
+      expect(res.status).toBe(200);
+      expect(res.headers['accept-ranges']).toBe('bytes');
+      expect(res.headers['content-length']).toBe(String(sizeBytes));
+      expect((res.body as Buffer).length).toBe(sizeBytes);
+    }, 120_000);
+
+    it('serves an open-ended range to the end of the file', async () => {
+      const token = await signUp();
+      const { slug, sizeBytes } = await publishVideo(token);
+
+      const res = await asBuffer(
+        request(app.getHttpServer())
+          .get(`/videos/${slug}/stream`)
+          .set('Range', `bytes=${sizeBytes - 10}-`),
+      );
+
+      expect(res.status).toBe(206);
+      expect((res.body as Buffer).length).toBe(10);
+    }, 120_000);
+
+    it('returns 416 with the current length for an out-of-bounds range', async () => {
+      const token = await signUp();
+      const { slug, sizeBytes } = await publishVideo(token);
+
+      const res = await request(app.getHttpServer())
+        .get(`/videos/${slug}/stream`)
+        .set('Range', `bytes=${sizeBytes + 1000}-`);
+
+      expect(res.status).toBe(416);
+      expect(res.headers['content-range']).toBe(`bytes */${sizeBytes}`);
+    }, 120_000);
+
+    it('works anonymously and is not rate limited', async () => {
+      const token = await signUp();
+      const { slug } = await publishVideo(token);
+
+      // Well past the inherited 10 req/min throttle budget.
+      for (let i = 0; i < 15; i++) {
+        const res = await request(app.getHttpServer())
+          .get(`/videos/${slug}/stream`)
+          .set('Range', 'bytes=0-9');
+        expect(res.status).toBe(206);
+      }
+    }, 120_000);
+
+    it('returns 404 for a video that is not ready', async () => {
+      const token = await signUp();
+      const { slug } = await uploadFile(token);
+
+      const res = await request(app.getHttpServer()).get(
+        `/videos/${slug}/stream`,
+      );
+
+      expect(res.status).toBe(404);
+    }, 60_000);
+  });
+
+  describe('GET /videos/:slug/download', () => {
+    it('serves the file as an attachment named after the title', async () => {
+      const token = await signUp();
+      const { slug, sizeBytes } = await publishVideo(token);
+
+      const res = await request(app.getHttpServer())
+        .get(`/videos/${slug}/download`)
+        .buffer(true)
+        .parse((response, callback) => {
+          const chunks: Buffer[] = [];
+          response.on('data', (chunk: Buffer) => chunks.push(chunk));
+          response.on('end', () => callback(null, Buffer.concat(chunks)));
+        });
+
+      expect(res.status).toBe(200);
+      expect(res.headers['content-disposition']).toBe(
+        'attachment; filename="My-clip.mp4"',
+      );
+      expect((res.body as Buffer).length).toBe(sizeBytes);
+      expect((res.body as Buffer).equals(clipBytes)).toBe(true);
+    }, 120_000);
+
+    it('returns 404 for a video that is not ready', async () => {
+      const token = await signUp();
+      const { slug } = await uploadFile(token);
+
+      const res = await request(app.getHttpServer()).get(
+        `/videos/${slug}/download`,
+      );
+
+      expect(res.status).toBe(404);
+    }, 60_000);
   });
 });

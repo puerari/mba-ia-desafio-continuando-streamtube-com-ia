@@ -186,6 +186,39 @@ export class VideosService {
     return { id: video.id, slug: video.slug, status: video.status };
   }
 
+  /**
+   * Public lookup by slug.
+   *
+   * A video that exists but is not `ready` raises the same exception as an
+   * unknown slug: from outside, an unpublished video must be indistinguishable
+   * from one that does not exist.
+   */
+  async findReadyBySlug(slug: string): Promise<Video> {
+    const video = await this.videoRepository.findOne({
+      where: { slug },
+      relations: ['channel'],
+    });
+
+    if (!video || video.status !== VideoStatus.READY) {
+      throw new VideoNotFoundException();
+    }
+
+    return video;
+  }
+
+  /** The authenticated channel's videos, in every status, newest first. */
+  async findByChannelUser(userId: string): Promise<Video[]> {
+    const channel = await this.channelsService.findByUserId(userId);
+    if (!channel) {
+      throw new ChannelNotFoundException();
+    }
+
+    return this.videoRepository.find({
+      where: { channel_id: channel.id },
+      order: { created_at: 'DESC' },
+    });
+  }
+
   /** Loads a video for the worker, which addresses it by id. */
   async findByIdOrFail(videoId: string): Promise<Video> {
     const video = await this.videoRepository.findOne({

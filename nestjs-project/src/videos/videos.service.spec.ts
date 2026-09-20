@@ -63,6 +63,8 @@ function makeRepository(overrides: Record<string, jest.Mock> = {}): any {
     create: jest.fn((entity: Partial<Video>) => makeVideo(entity)),
     save: jest.fn((entity: Video) => Promise.resolve(entity)),
     findOne: jest.fn(),
+    find: jest.fn().mockResolvedValue([]),
+    update: jest.fn().mockResolvedValue(undefined),
     ...overrides,
   };
 }
@@ -440,6 +442,136 @@ describe('VideosService', () => {
 
       expect(queue.add).not.toHaveBeenCalled();
       expect(repository.save).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('findReadyBySlug', () => {
+    const readyVideo = makeVideo({
+      status: VideoStatus.READY,
+      channel: { id: 'channel-id' } as any,
+    });
+
+    it('loads the video together with its channel', async () => {
+      const repository = makeRepository({
+        findOne: jest.fn().mockResolvedValue(readyVideo),
+      });
+      const { service } = makeService({ repository });
+
+      await expect(service.findReadyBySlug('abcdefghijk')).resolves.toBe(
+        readyVideo,
+      );
+      expect(repository.findOne).toHaveBeenCalledWith({
+        where: { slug: 'abcdefghijk' },
+        relations: ['channel'],
+      });
+    });
+
+    it('throws for an unknown slug', async () => {
+      const repository = makeRepository({
+        findOne: jest.fn().mockResolvedValue(null),
+      });
+      const { service } = makeService({ repository });
+
+      await expect(
+        service.findReadyBySlug('nonexistent'),
+      ).rejects.toBeInstanceOf(VideoNotFoundException);
+    });
+
+    it.each([VideoStatus.DRAFT, VideoStatus.PROCESSING, VideoStatus.FAILED])(
+      'hides a %s video behind the same not-found error',
+      async (status) => {
+        const repository = makeRepository({
+          findOne: jest.fn().mockResolvedValue(makeVideo({ status })),
+        });
+        const { service } = makeService({ repository });
+
+        await expect(
+          service.findReadyBySlug('abcdefghijk'),
+        ).rejects.toBeInstanceOf(VideoNotFoundException);
+      },
+    );
+  });
+
+  describe('findByChannelUser', () => {
+    it('returns the channel videos newest first', async () => {
+      const videos = [makeVideo({ id: 'newer' }), makeVideo({ id: 'older' })];
+      const repository = makeRepository({
+        find: jest.fn().mockResolvedValue(videos),
+      });
+      const { service } = makeService({ repository });
+
+      await expect(service.findByChannelUser('user-id')).resolves.toBe(videos);
+      expect(repository.find).toHaveBeenCalledWith({
+        where: { channel_id: 'channel-id' },
+        order: { created_at: 'DESC' },
+      });
+    });
+
+    it('throws when the user has no channel', async () => {
+      const { service } = makeService({
+        channels: makeChannelsService(null),
+      });
+
+      await expect(
+        service.findByChannelUser('user-id'),
+      ).rejects.toBeInstanceOf(ChannelNotFoundException);
+    });
+  });
+
+  describe('worker transitions', () => {
+    it('markReady writes the metadata and clears any previous error', async () => {
+      const repository = makeRepository({
+        update: jest.fn().mockResolvedValue(undefined),
+      });
+      const { service } = makeService({ repository });
+
+      await service.markReady(
+        'video-id',
+        {
+          durationSeconds: 12.5,
+          width: 1920,
+          height: 1080,
+          videoCodec: 'h264',
+          bitrate: 1000,
+        },
+        'thumbnails/video-id/default.jpg',
+      );
+
+      expect(repository.update).toHaveBeenCalledWith('video-id', {
+        status: VideoStatus.READY,
+        duration_seconds: 12.5,
+        width: 1920,
+        height: 1080,
+        video_codec: 'h264',
+        bitrate: 1000,
+        thumbnail_key: 'thumbnails/video-id/default.jpg',
+        processing_error: null,
+      });
+    });
+
+    it('markFailed records the reason alongside the failed status', async () => {
+      const repository = makeRepository({
+        update: jest.fn().mockResolvedValue(undefined),
+      });
+      const { service } = makeService({ repository });
+
+      await service.markFailed('video-id', 'ffprobe exploded');
+
+      expect(repository.update).toHaveBeenCalledWith('video-id', {
+        status: VideoStatus.FAILED,
+        processing_error: 'ffprobe exploded',
+      });
+    });
+
+    it('findByIdOrFail throws for an unknown id', async () => {
+      const repository = makeRepository({
+        findOne: jest.fn().mockResolvedValue(null),
+      });
+      const { service } = makeService({ repository });
+
+      await expect(service.findByIdOrFail('nope')).rejects.toBeInstanceOf(
+        VideoNotFoundException,
+      );
     });
   });
 });

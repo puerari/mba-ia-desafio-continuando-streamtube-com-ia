@@ -187,6 +187,14 @@ export class StorageService implements OnModuleInit {
     );
   }
 
+  /** Size of an object in bytes, without fetching its body. */
+  async getObjectSize(key: string): Promise<number> {
+    const response = await this.client.send(
+      new HeadObjectCommand({ Bucket: this.config.bucket, Key: key }),
+    );
+    return response.ContentLength ?? 0;
+  }
+
   async objectExists(key: string): Promise<boolean> {
     try {
       await this.client.send(
