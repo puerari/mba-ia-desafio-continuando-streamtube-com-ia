@@ -1,7 +1,9 @@
 # phase-03-videos — Progress
 
-**Status:** in progress
-**SIs:** 14/16 completed
+**Status:** completed
+**SIs:** 16/16 completed
+
+**Definition of Done:** `npm test -- --runInBand` 265/265 · `npm run test:e2e` 86/86 · `npx tsc --noEmit` exit 0 · `npm run lint` exit 0, all from a freshly reset schema.
 
 _Live-stack verification (2026-09-20):_ the whole pipeline was exercised against the running containers, not only through the test suite — register → upload init (pre-registered as `draft`) → parts uploaded straight to MinIO through the presigned URLs → complete → the `video-worker` container picked up the job and finished in **1.0s**, writing `duration=4.000s 640x360 codec=h264 bitrate=57048` and a 44,651-byte JPEG thumbnail. Then `GET /videos/:slug` (200), `/thumbnail` (200 image/jpeg), `/stream` with `Range: bytes=0-1023` (**206**, `content-range: bytes 0-1023/28524`), `/stream` with no range (200, full 28,524 bytes), an out-of-bounds range (**416**, `content-range: bytes */28524`), `/download` (200, `attachment; filename="Smoke-Test-Clip.mp4"`, byte-identical to the source) and `/videos/me` (200).
 
@@ -83,6 +85,6 @@ _Execution note:_ SI-03.15 was pulled forward, out of the linearized order in th
 - **Observations:** The inherited spec was not hermetic and had never been run twice against one database: `beforeAll` dropped the managed tables but not the enum types, which are schema objects of their own and survive `DROP TABLE ... CASCADE`. On a second run `CreateAuthTokens.up()` failed with `type "verification_tokens_type_enum" already exists`. Worse, the failure left the DataSource open, so Jest reported "did not exit one second after the test run" and hung instead of surfacing the error — which is how the problem stayed invisible. Fixed by dropping the enum types alongside the tables and by destroying the DataSource when setup throws. Table and migration lists are now derived from single constants so the next migration only needs one line.
 
 ### SI-03.16 — Documentation: CLAUDE.md Video Section and OpenAPI Export
-- **Status:** pending
-- **Tests:** —
-- **Observations:** —
+- **Status:** completed
+- **Tests:** no tests of its own — `openapi.json` regenerated and verified to contain all seven video paths; every backticked file path in the CLAUDE.md files and the phase artifacts was checked to resolve to a real file
+- **Observations:** `nestjs-project/CLAUDE.md` gained a `## Video Pipeline` section (upload handshake, worker, delivery, endpoint table, object layout, configuration), the new Compose services and their readiness probes, the two entrypoints, the new module table, the worker npm scripts, the e2e serialization note and the queue-pausing rule for specs. Two inherited statements were corrected rather than left stale: the root `CLAUDE.md` still described `next-frontend/` as "not yet initialized" when it is a real Next.js app, and it described the frontend as streaming from object storage, which the delivery decision reverses. `openapi.json` now documents `POST /videos/uploads`, `POST /videos/{id}/uploads/complete`, `GET /videos/me`, `GET /videos/{slug}`, `/thumbnail`, `/stream` and `/download`.
