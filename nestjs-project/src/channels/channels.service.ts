@@ -1,5 +1,6 @@
 import { Injectable } from '@nestjs/common';
-import { DataSource, QueryFailedError } from 'typeorm';
+import { InjectRepository } from '@nestjs/typeorm';
+import { DataSource, QueryFailedError, Repository } from 'typeorm';
 import { appendRandomSuffix, sanitizeNickname } from './nickname.util';
 import { Channel } from './entities/channel.entity';
 
@@ -19,7 +20,23 @@ function isPgUniqueViolationOnColumn(err: unknown, column: string): boolean {
 
 @Injectable()
 export class ChannelsService {
-  constructor(private readonly dataSource: DataSource) {}
+  constructor(
+    @InjectRepository(Channel)
+    private readonly channelRepository: Repository<Channel>,
+    private readonly dataSource: DataSource,
+  ) {}
+
+  /**
+   * The owning channel of a user, or `null` when they have none.
+   *
+   * Absence is a valid domain result here, not a swallowed error — the caller
+   * decides whether a missing channel is exceptional. This is the only entry
+   * point other modules use to reach a channel: nothing outside
+   * `ChannelsModule` touches `Repository<Channel>`.
+   */
+  async findByUserId(userId: string): Promise<Channel | null> {
+    return this.channelRepository.findOne({ where: { user_id: userId } });
+  }
 
   async createChannel(userId: string, email: string): Promise<Channel> {
     const baseNickname = sanitizeNickname(email.split('@')[0]);
