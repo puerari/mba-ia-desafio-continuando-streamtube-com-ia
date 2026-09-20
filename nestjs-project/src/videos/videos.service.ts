@@ -49,6 +49,15 @@ export interface CompleteUploadResult {
   status: VideoStatus;
 }
 
+/** Metadata the worker extracts and hands back on success. */
+export interface VideoProcessingMetadata {
+  durationSeconds: number;
+  width: number;
+  height: number;
+  videoCodec: string;
+  bitrate: number | null;
+}
+
 @Injectable()
 export class VideosService {
   constructor(
@@ -175,6 +184,48 @@ export class VideosService {
     });
 
     return { id: video.id, slug: video.slug, status: video.status };
+  }
+
+  /** Loads a video for the worker, which addresses it by id. */
+  async findByIdOrFail(videoId: string): Promise<Video> {
+    const video = await this.videoRepository.findOne({
+      where: { id: videoId },
+    });
+
+    if (!video) {
+      throw new VideoNotFoundException();
+    }
+
+    return video;
+  }
+
+  /** Terminal success transition, written by the worker. */
+  async markReady(
+    videoId: string,
+    metadata: VideoProcessingMetadata,
+    thumbnailKey: string,
+  ): Promise<void> {
+    await this.videoRepository.update(videoId, {
+      status: VideoStatus.READY,
+      duration_seconds: metadata.durationSeconds,
+      width: metadata.width,
+      height: metadata.height,
+      video_codec: metadata.videoCodec,
+      bitrate: metadata.bitrate,
+      thumbnail_key: thumbnailKey,
+      processing_error: null,
+    });
+  }
+
+  /**
+   * Terminal failure transition. Only called once BullMQ has exhausted its
+   * attempts — while retries remain the row must keep saying `processing`.
+   */
+  async markFailed(videoId: string, reason: string): Promise<void> {
+    await this.videoRepository.update(videoId, {
+      status: VideoStatus.FAILED,
+      processing_error: reason,
+    });
   }
 
   private isAllowedContentType(contentType: string): boolean {

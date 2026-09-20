@@ -1,6 +1,10 @@
 FROM node:25.6.0-slim
 
-RUN apt update && apt install -y procps curl
+# ffmpeg is here for the test suite, not for the API runtime: CLAUDE.md runs
+# every npm command inside this container, and the media specs shell out to
+# ffprobe/ffmpeg against real fixtures. The API itself never spawns them —
+# only MediaModule does, and only the worker's module graph imports it.
+RUN apt update && apt install -y procps curl ffmpeg && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /home/node/app
 
