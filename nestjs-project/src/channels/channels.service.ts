@@ -1,25 +1,32 @@
 import { Injectable } from '@nestjs/common';
-import { DataSource, QueryFailedError } from 'typeorm';
+import { InjectRepository } from '@nestjs/typeorm';
+import { DataSource, Repository } from 'typeorm';
+import { isUniqueViolationOnColumn } from '../common/database/pg-error.util';
 import { appendRandomSuffix, sanitizeNickname } from './nickname.util';
 import { Channel } from './entities/channel.entity';
 
-const PG_UNIQUE_VIOLATION = '23505';
 const NICKNAME_COLUMN = 'nickname';
 const MAX_RETRIES = 5;
 
-function isPgUniqueViolationOnColumn(err: unknown, column: string): boolean {
-  if (!(err instanceof QueryFailedError)) return false;
-  const e = err as any;
-  return (
-    e.code === PG_UNIQUE_VIOLATION &&
-    typeof e.detail === 'string' &&
-    e.detail.includes(column)
-  );
-}
-
 @Injectable()
 export class ChannelsService {
-  constructor(private readonly dataSource: DataSource) {}
+  constructor(
+    @InjectRepository(Channel)
+    private readonly channelRepository: Repository<Channel>,
+    private readonly dataSource: DataSource,
+  ) {}
+
+  /**
+   * The owning channel of a user, or `null` when they have none.
+   *
+   * Absence is a valid domain result here, not a swallowed error — the caller
+   * decides whether a missing channel is exceptional. This is the only entry
+   * point other modules use to reach a channel: nothing outside
+   * `ChannelsModule` touches `Repository<Channel>`.
+   */
+  async findByUserId(userId: string): Promise<Channel | null> {
+    return this.channelRepository.findOne({ where: { user_id: userId } });
+  }
 
   async createChannel(userId: string, email: string): Promise<Channel> {
     const baseNickname = sanitizeNickname(email.split('@')[0]);
@@ -45,7 +52,7 @@ export class ChannelsService {
             }),
           );
         } catch (err) {
-          if (isPgUniqueViolationOnColumn(err, NICKNAME_COLUMN)) {
+          if (isUniqueViolationOnColumn(err, NICKNAME_COLUMN)) {
             // Concurrent insert between pre-check and save — retry with new suffix
             nickname = appendRandomSuffix(baseNickname);
           } else {

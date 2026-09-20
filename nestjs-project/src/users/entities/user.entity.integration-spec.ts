@@ -8,7 +8,9 @@ import {
 import { Channel } from '../../channels/entities/channel.entity';
 import { User } from './user.entity';
 
-const ALL_ENTITIES = [User, Channel, RefreshToken, VerificationToken];
+import { Video } from '../../videos/entities/video.entity';
+
+const ALL_ENTITIES = [User, Channel, RefreshToken, VerificationToken, Video];
 
 describe('User entity (integration)', () => {
   let dataSource: DataSource;

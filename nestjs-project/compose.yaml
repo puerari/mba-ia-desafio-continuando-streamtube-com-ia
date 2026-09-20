@@ -1,6 +1,6 @@
 services:
   nestjs-api:
-    build: 
+    build:
       context: .
       dockerfile: Dockerfile.dev
     ports:
@@ -12,6 +12,25 @@ services:
         condition: service_healthy
       mailpit:
         condition: service_started
+      minio:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
+  video-worker:
+    build:
+      context: .
+      dockerfile: Dockerfile.worker
+    volumes:
+      - .:/home/node/app
+    command: npm run start:worker:dev
+    depends_on:
+      db:
+        condition: service_healthy
+      minio:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
 
   db:
     image: postgres:17
@@ -33,4 +52,41 @@ services:
       - "1025:1025"
       - "8025:8025"
 
+  minio:
+    # MinIO's own registry — the docker.io/minio/minio mirror is not publicly
+    # pullable anymore.
+    image: quay.io/minio/minio
+    command: server /data --console-address ":9001"
+    environment:
+      - MINIO_ROOT_USER=streamtube
+      - MINIO_ROOT_PASSWORD=streamtube
+    ports:
+      # 9000 is the S3 API; 9001 is the web console for inspecting buckets.
+      - "9000:9000"
+      - "9001:9001"
+    volumes:
+      - minio-data:/data
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://localhost:9000/minio/health/live"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
 
+  redis:
+    image: redis:8-alpine
+    # AOF persistence so queued jobs survive a container restart.
+    command: redis-server --appendonly yes
+    # Deliberately not published: only containers consume the queue, and leaving
+    # the port unpublished avoids colliding with a Redis already running on the
+    # developer's host.
+    volumes:
+      - redis-data:/data
+    healthcheck:
+      test: ["CMD-SHELL", "redis-cli ping | grep -q PONG"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+volumes:
+  minio-data:
+  redis-data:
